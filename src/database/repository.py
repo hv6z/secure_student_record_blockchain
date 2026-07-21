@@ -28,6 +28,8 @@ class StoredVersion:
     ciphertext: bytes
     envelope_hash: str
     operation: str
+    actor_id: str
+    actor_role: str
     created_at: str
 
 
@@ -57,6 +59,8 @@ def _version_from_row(row: sqlite3.Row | None) -> StoredVersion | None:
         ciphertext=bytes(row["ciphertext"]),
         envelope_hash=row["envelope_hash"],
         operation=row["operation"],
+        actor_id=row["actor_id"],
+        actor_role=row["actor_role"],
         created_at=row["created_at"],
     )
 
@@ -144,14 +148,16 @@ def insert_version(
     ciphertext: bytes,
     envelope_hash: str,
     operation: str,
+    actor_id: str,
+    actor_role: str,
     timestamp: str,
 ) -> None:
     connection.execute(
         """
         INSERT INTO record_versions (
             record_id, version, schema_version, algorithm, key_id, nonce, ciphertext,
-            envelope_hash, operation, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            envelope_hash, operation, actor_id, actor_role, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             record_id,
@@ -163,6 +169,8 @@ def insert_version(
             ciphertext,
             envelope_hash,
             operation,
+            actor_id,
+            actor_role,
             timestamp,
         ),
     )
