@@ -8,6 +8,7 @@ from cryptography.exceptions import InvalidTag
 from src.encryption import (
     AES_GCM_ALGORITHM,
     AES_GCM_NONCE_SIZE,
+    AES_GCM_SCHEMA_VERSION,
     AesGcmCipher,
     EncryptedEnvelope,
 )
@@ -24,7 +25,7 @@ def test_encrypt_decrypt_unicode_and_authenticated_context() -> None:
 
     envelope = cipher.encrypt(plaintext, aad=aad)
 
-    assert envelope.schema_version == 1
+    assert envelope.schema_version == AES_GCM_SCHEMA_VERSION == 2
     assert envelope.algorithm == AES_GCM_ALGORITHM
     assert envelope.key_id == "research-key-v1"
     assert len(envelope.nonce) == AES_GCM_NONCE_SIZE
@@ -75,6 +76,15 @@ def test_cipher_rejects_wrong_key_size_and_key_id_mismatch() -> None:
     second_cipher = AesGcmCipher(KEY, "key-b")
     with pytest.raises(ValueError, match="không thuộc khóa"):
         second_cipher.decrypt(envelope, aad=b"context")
+
+
+def test_cipher_can_decrypt_legacy_schema_v1_envelope() -> None:
+    cipher = AesGcmCipher(KEY)
+    aad = make_aad("record-legacy", 1, "CREATE", schema_version=1)
+    current = cipher.encrypt(b"legacy-compatible", aad=aad)
+    legacy = replace(current, schema_version=1)
+
+    assert cipher.decrypt(legacy, aad=aad) == b"legacy-compatible"
 
 
 def test_envelope_is_immutable_and_validates_nonce() -> None:

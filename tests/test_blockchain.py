@@ -42,6 +42,13 @@ def test_blocks_link_create_update_delete(tmp_path) -> None:
         "UPDATE",
         "DELETE",
     ]
+    assert [item["actor_role"] for item in blocks] == [
+        "system",
+        "system",
+        "system",
+        "system",
+    ]
+    assert [item["block_schema_version"] for item in blocks] == [1, 2, 2, 2]
     for previous, current in zip(blocks, blocks[1:]):
         assert current["previous_hash"] == previous["block_hash"]
 

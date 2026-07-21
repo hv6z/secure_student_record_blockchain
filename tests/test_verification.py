@@ -80,6 +80,25 @@ def test_tampered_envelope_hash_is_detected(populated) -> None:
     assert not service.verify_all().valid
 
 
+def test_tampered_actor_context_is_detected(populated) -> None:
+    path, service, _ = populated
+    connection = sqlite3.connect(path)
+    try:
+        connection.execute(
+            "UPDATE record_versions SET actor_id = 'attacker' "
+            "WHERE rowid = (SELECT rowid FROM record_versions LIMIT 1)"
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    report = service.verify_all()
+    assert not report.valid
+    joined = " ".join(report.messages)
+    assert "không khớp" in joined
+    assert "xác thực hoặc giải mã" in joined
+
+
 def test_malformed_envelope_is_reported_instead_of_crashing(populated) -> None:
     path, service, _ = populated
     connection = sqlite3.connect(path)

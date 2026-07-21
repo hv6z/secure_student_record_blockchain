@@ -39,21 +39,30 @@ def test_canonical_json_rejects_non_finite_numbers() -> None:
 def test_make_aad_binds_all_context_fields() -> None:
     expected = canonical_json_bytes(
         {
+            "actor_id": "user-01",
+            "actor_role": "registrar",
             "operation": "CREATE",
             "record_id": "record-01",
-            "schema_version": 1,
+            "schema_version": 2,
             "version": 3,
         }
     )
-    assert make_aad("record-01", 3, "CREATE") == expected
-    assert make_aad("record-01", 3, "CREATE") != make_aad(
-        "record-01", 4, "CREATE"
+    assert make_aad(
+        "record-01", 3, "CREATE", actor_id="user-01", actor_role="registrar"
+    ) == expected
+    assert make_aad(
+        "record-01", 3, "CREATE", actor_id="user-01", actor_role="registrar"
+    ) != make_aad(
+        "record-01", 4, "CREATE", actor_id="user-01", actor_role="registrar"
+    )
+    assert b"actor_id" not in make_aad(
+        "record-01", 3, "CREATE", schema_version=1
     )
 
 
 def test_envelope_hash_covers_context_and_all_envelope_metadata() -> None:
     envelope = EncryptedEnvelope(
-        schema_version=1,
+        schema_version=2,
         algorithm=AES_GCM_ALGORITHM,
         key_id="key-v1",
         nonce=bytes(range(12)),
@@ -70,19 +79,33 @@ def test_envelope_hash_covers_context_and_all_envelope_metadata() -> None:
         "operation": "CREATE",
         "record_id": "record-01",
         "version": 1,
+        "actor_id": "user-01",
+        "actor_role": "registrar",
     }
     expected = hashlib.sha256(
         ENVELOPE_HASH_DOMAIN + b"\x00" + canonical_json_bytes(expected_payload)
     ).hexdigest()
 
-    result = calculate_envelope_hash("record-01", 1, "CREATE", envelope)
+    result = calculate_envelope_hash(
+        "record-01", 1, "CREATE", envelope, "user-01", "registrar"
+    )
 
     assert result == expected
     assert len(result) == 64
     assert result != calculate_envelope_hash(
-        "record-01", 1, "CREATE", replace(envelope, key_id="key-v2")
+        "record-01",
+        1,
+        "CREATE",
+        replace(envelope, key_id="key-v2"),
+        "user-01",
+        "registrar",
     )
-    assert result != calculate_envelope_hash("record-01", 2, "UPDATE", envelope)
+    assert result != calculate_envelope_hash(
+        "record-01", 2, "UPDATE", envelope, "user-01", "registrar"
+    )
+    assert result != calculate_envelope_hash(
+        "record-01", 1, "CREATE", envelope, "user-02", "registrar"
+    )
 
 
 def test_lookup_key_and_token_are_deterministic_and_normalized() -> None:

@@ -37,6 +37,10 @@ def test_settings_from_env_resolves_relative_database(monkeypatch) -> None:
     monkeypatch.setenv("FLASK_SECRET_KEY", "test-secret")
     monkeypatch.setenv("DATABASE_PATH", "instance/test.db")
     monkeypatch.setenv("KEY_ID", "test-key")
+    monkeypatch.setenv("SESSION_LIFETIME_MINUTES", "45")
+    monkeypatch.setenv("LOGIN_MAX_ATTEMPTS", "4")
+    monkeypatch.setenv("LOGIN_LOCKOUT_MINUTES", "20")
+    monkeypatch.setenv("SESSION_COOKIE_SECURE", "true")
 
     settings = Settings.from_env(testing=True)
 
@@ -46,4 +50,17 @@ def test_settings_from_env_resolves_relative_database(monkeypatch) -> None:
     assert settings.flask_secret_key == "test-secret"
     assert settings.key_id == "test-key"
     assert settings.testing is True
+    assert settings.session_lifetime_minutes == 45
+    assert settings.login_max_attempts == 4
+    assert settings.login_lockout_minutes == 20
+    assert settings.session_cookie_secure is True
+
+
+def test_settings_reject_invalid_session_configuration(monkeypatch) -> None:
+    monkeypatch.setenv("AES_KEY", base64.b64encode(b"z" * 32).decode("ascii"))
+    monkeypatch.setenv("FLASK_SECRET_KEY", "test-secret")
+    monkeypatch.setenv("LOGIN_MAX_ATTEMPTS", "0")
+
+    with pytest.raises(ConfigurationError, match="LOGIN_MAX_ATTEMPTS"):
+        Settings.from_env(testing=True)
 
