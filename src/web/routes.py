@@ -18,12 +18,21 @@ from flask import (
 from src.domain.student import ValidationError
 from src.services.record_service import RecordService, RecordServiceError
 
+from .access import current_user, roles_required
+
 
 web = Blueprint("web", __name__)
 
 
 def _service() -> RecordService:
     return current_app.extensions["record_service"]
+
+
+def _actor_context() -> dict[str, str]:
+    user = current_user()
+    if user is None:  # Bảo vệ dự phòng; route đã được chặn ở app.before_request.
+        abort(401)
+    return {"actor_id": user.user_id, "actor_role": user.role}
 
 
 def _student_from_form() -> dict[str, Any]:
@@ -102,6 +111,7 @@ def students():
 
 
 @web.route("/students/new", methods=["GET", "POST"])
+@roles_required("admin", "registrar")
 def new_student():
     if request.method == "GET":
         return render_template(
@@ -112,7 +122,7 @@ def new_student():
 
     student = _student_from_form()
     try:
-        created = _service().create_student(student)
+        created = _service().create_student(student, **_actor_context())
     except (ValidationError, RecordServiceError, ValueError, KeyError) as error:
         flash(_friendly_error(error), "error")
         return (
@@ -138,6 +148,7 @@ def student_detail(record_id: str):
 
 
 @web.route("/students/<record_id>/edit", methods=["GET", "POST"])
+@roles_required("admin", "registrar")
 def edit_student(record_id: str):
     service = _service()
     current = service.get_student(record_id, include_deleted=True)
@@ -157,7 +168,10 @@ def edit_student(record_id: str):
     student["_version"] = request.form.get("expected_version", "")
     try:
         updated = service.update_student(
-            record_id, student, expected_version=_expected_version()
+            record_id,
+            student,
+            expected_version=_expected_version(),
+            **_actor_context(),
         )
     except (ValidationError, RecordServiceError, ValueError, KeyError) as error:
         flash(_friendly_error(error), "error")
@@ -173,9 +187,14 @@ def edit_student(record_id: str):
 
 
 @web.post("/students/<record_id>/delete")
+@roles_required("admin", "registrar")
 def delete_student(record_id: str):
     try:
-        _service().delete_student(record_id, expected_version=_expected_version())
+        _service().delete_student(
+            record_id,
+            expected_version=_expected_version(),
+            **_actor_context(),
+        )
     except (RecordServiceError, ValueError, KeyError) as error:
         flash(_friendly_error(error), "error")
         return redirect(url_for("web.student_detail", record_id=record_id))
