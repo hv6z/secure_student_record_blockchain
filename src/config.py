@@ -16,6 +16,31 @@ class ConfigurationError(ValueError):
     """Cấu hình thiếu hoặc không hợp lệ."""
 
 
+def _positive_integer_from_env(name: str, default: int) -> int:
+    raw = os.getenv(name, str(default)).strip()
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ConfigurationError(f"{name} phải là số nguyên dương.") from exc
+    if value < 1:
+        raise ConfigurationError(f"{name} phải là số nguyên dương.")
+    return value
+
+
+def _boolean_from_env(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    normalized = raw.strip().casefold()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ConfigurationError(
+        f"{name} phải là một trong: true/false, 1/0, yes/no hoặc on/off."
+    )
+
+
 def load_env_file(path: Path | None = None) -> None:
     """Đọc tệp .env đơn giản mà không ghi đè biến môi trường hiện có."""
 
@@ -55,6 +80,10 @@ class Settings:
     flask_secret_key: str
     key_id: str = "key-v1"
     testing: bool = False
+    session_lifetime_minutes: int = 30
+    login_max_attempts: int = 5
+    login_lockout_minutes: int = 15
+    session_cookie_secure: bool = False
 
     @classmethod
     def from_env(cls, *, testing: bool = False) -> "Settings":
@@ -85,5 +114,17 @@ class Settings:
             flask_secret_key=secret_key,
             key_id=os.getenv("KEY_ID", "key-v1").strip() or "key-v1",
             testing=testing,
+            session_lifetime_minutes=_positive_integer_from_env(
+                "SESSION_LIFETIME_MINUTES", 30
+            ),
+            login_max_attempts=_positive_integer_from_env(
+                "LOGIN_MAX_ATTEMPTS", 5
+            ),
+            login_lockout_minutes=_positive_integer_from_env(
+                "LOGIN_LOCKOUT_MINUTES", 15
+            ),
+            session_cookie_secure=_boolean_from_env(
+                "SESSION_COOKIE_SECURE", False
+            ),
         )
 
