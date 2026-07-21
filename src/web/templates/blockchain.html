@@ -29,6 +29,7 @@
           <div class="block-facts">
             <div><span>Mã hồ sơ</span><a href="{{ url_for('web.student_detail', record_id=block.record_id) }}"><code>{{ block.record_id }}</code></a></div>
             <div><span>Phiên bản</span><strong>v{{ block.version }}</strong></div>
+            <div><span>Người thao tác</span><strong>{{ role_label(block.actor_role) }}</strong><code title="{{ block.actor_id }}">{{ block.actor_id[:13] }}{{ '…' if block.actor_id|length > 13 else '' }}</code></div>
           </div>
         {% else %}
           <p class="genesis-copy">Khối cố định mở đầu chuỗi và tạo mốc kiểm tra cho khối tiếp theo.</p>

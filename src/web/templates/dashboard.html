@@ -7,7 +7,9 @@
     <h1>Hồ sơ được mã hóa, mọi thay đổi đều có dấu vết</h1>
     <p>Theo dõi hồ sơ sinh viên, kiểm tra chuỗi liên kết băm và xác minh tính toàn vẹn từ một nơi duy nhất.</p>
     <div class="hero-actions">
-      <a class="button button-primary" href="{{ url_for('web.new_student') }}">Thêm sinh viên</a>
+      {% if can_manage_records() %}
+        <a class="button button-primary" href="{{ url_for('web.new_student') }}">Thêm sinh viên</a>
+      {% endif %}
       <a class="button button-secondary" href="{{ url_for('web.verification') }}">Xác minh dữ liệu</a>
     </div>
   </div>
@@ -60,7 +62,7 @@
       <div class="empty-state compact">
         <span class="empty-icon" aria-hidden="true">＋</span>
         <h3>Chưa có hồ sơ</h3>
-        <p>Thêm sinh viên đầu tiên để bắt đầu chuỗi kiểm toán.</p>
+        <p>{{ 'Thêm sinh viên đầu tiên để bắt đầu chuỗi kiểm toán.' if can_manage_records() else 'Chưa có hồ sơ nào trong phạm vi theo dõi.' }}</p>
       </div>
     {% endif %}
   </section>

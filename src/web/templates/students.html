@@ -7,7 +7,9 @@
     <h1>Danh sách sinh viên</h1>
     <p>Dữ liệu trong bảng được giải mã trong phiên làm việc hiện tại.</p>
   </div>
-  <a class="button button-primary" href="{{ url_for('web.new_student') }}">Thêm sinh viên</a>
+  {% if can_manage_records() %}
+    <a class="button button-primary" href="{{ url_for('web.new_student') }}">Thêm sinh viên</a>
+  {% endif %}
 </header>
 
 <section class="panel table-panel">
@@ -43,7 +45,9 @@
       <span class="empty-icon" aria-hidden="true">SV</span>
       <h2>Chưa có hồ sơ sinh viên</h2>
       <p>Hồ sơ đầu tiên sẽ được mã hóa trước khi lưu và tạo một khối kiểm toán mới.</p>
-      <a class="button button-primary" href="{{ url_for('web.new_student') }}">Tạo hồ sơ đầu tiên</a>
+      {% if can_manage_records() %}
+        <a class="button button-primary" href="{{ url_for('web.new_student') }}">Tạo hồ sơ đầu tiên</a>
+      {% endif %}
     </div>
   {% endif %}
 </section>

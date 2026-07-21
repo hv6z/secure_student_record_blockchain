@@ -13,7 +13,7 @@
       </div>
     </div>
   </div>
-  {% if student._status == 'active' %}
+  {% if student._status == 'active' and can_manage_records() %}
     <div class="header-actions">
       <a class="button button-secondary" href="{{ url_for('web.edit_student', record_id=student._record_id) }}">Cập nhật</a>
       <form method="post" action="{{ url_for('web.delete_student', record_id=student._record_id) }}" data-confirm="Bạn có chắc muốn xóa hồ sơ này? Thao tác xóa vẫn được ghi trong chuỗi kiểm toán.">
