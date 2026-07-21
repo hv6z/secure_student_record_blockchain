@@ -8,7 +8,9 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 
-BLOCK_HASH_DOMAIN = b"secure-student-record/audit-block/v1\x00"
+BLOCK_HASH_DOMAIN_V1 = b"secure-student-record/audit-block/v1\x00"
+BLOCK_HASH_DOMAIN = b"secure-student-record/audit-block/v2\x00"
+CURRENT_BLOCK_SCHEMA_VERSION = 2
 ZERO_HASH = "0" * 64
 GENESIS_TIMESTAMP = "1970-01-01T00:00:00.000000Z"
 
@@ -32,6 +34,9 @@ def calculate_block_hash(
     version: int,
     operation: str,
     envelope_hash: str,
+    block_schema_version: int = CURRENT_BLOCK_SCHEMA_VERSION,
+    actor_id: str = "system",
+    actor_role: str = "system",
 ) -> str:
     """Băm JSON chuẩn, có tiền tố miền để tránh dùng nhầm ngữ cảnh."""
 
@@ -44,7 +49,14 @@ def calculate_block_hash(
         "timestamp": timestamp,
         "version": version,
     }
-    return hashlib.sha256(BLOCK_HASH_DOMAIN + _canonical_json_bytes(payload)).hexdigest()
+    if block_schema_version >= 2:
+        payload["block_schema_version"] = block_schema_version
+        payload["actor_id"] = actor_id
+        payload["actor_role"] = actor_role
+        domain = BLOCK_HASH_DOMAIN
+    else:
+        domain = BLOCK_HASH_DOMAIN_V1
+    return hashlib.sha256(domain + _canonical_json_bytes(payload)).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +68,9 @@ class AuditBlock:
     version: int
     operation: str
     envelope_hash: str
+    block_schema_version: int
+    actor_id: str
+    actor_role: str
     block_hash: str
 
     def expected_hash(self) -> str:
@@ -67,6 +82,9 @@ class AuditBlock:
             version=self.version,
             operation=self.operation,
             envelope_hash=self.envelope_hash,
+            block_schema_version=self.block_schema_version,
+            actor_id=self.actor_id,
+            actor_role=self.actor_role,
         )
 
     def as_database_tuple(self) -> tuple[Any, ...]:
@@ -78,6 +96,9 @@ class AuditBlock:
             self.version,
             self.operation,
             self.envelope_hash,
+            self.block_schema_version,
+            self.actor_id,
+            self.actor_role,
             self.block_hash,
         )
 
@@ -90,6 +111,9 @@ class AuditBlock:
             "version": self.version,
             "operation": self.operation,
             "envelope_hash": self.envelope_hash,
+            "block_schema_version": self.block_schema_version,
+            "actor_id": self.actor_id,
+            "actor_role": self.actor_role,
             "block_hash": self.block_hash,
         }
 
@@ -105,6 +129,7 @@ def genesis_block() -> AuditBlock:
         version=0,
         operation="GENESIS",
         envelope_hash=ZERO_HASH,
+        block_schema_version=1,
     )
     return AuditBlock(
         block_index=0,
@@ -114,6 +139,9 @@ def genesis_block() -> AuditBlock:
         version=0,
         operation="GENESIS",
         envelope_hash=ZERO_HASH,
+        block_schema_version=1,
+        actor_id="system",
+        actor_role="system",
         block_hash=block_hash,
     )
 
@@ -126,6 +154,8 @@ def new_block(
     version: int,
     operation: str,
     envelope_hash: str,
+    actor_id: str = "system",
+    actor_role: str = "system",
 ) -> AuditBlock:
     block_index = previous.block_index + 1
     block_hash = calculate_block_hash(
@@ -136,6 +166,9 @@ def new_block(
         version=version,
         operation=operation,
         envelope_hash=envelope_hash,
+        block_schema_version=CURRENT_BLOCK_SCHEMA_VERSION,
+        actor_id=actor_id,
+        actor_role=actor_role,
     )
     return AuditBlock(
         block_index=block_index,
@@ -145,6 +178,9 @@ def new_block(
         version=version,
         operation=operation,
         envelope_hash=envelope_hash,
+        block_schema_version=CURRENT_BLOCK_SCHEMA_VERSION,
+        actor_id=actor_id,
+        actor_role=actor_role,
         block_hash=block_hash,
     )
 
@@ -158,5 +194,8 @@ def block_from_row(row: Mapping[str, Any]) -> AuditBlock:
         version=int(row["version"]),
         operation=str(row["operation"]),
         envelope_hash=str(row["envelope_hash"]),
+        block_schema_version=int(row["block_schema_version"]),
+        actor_id=str(row["actor_id"]),
+        actor_role=str(row["actor_role"]),
         block_hash=str(row["block_hash"]),
     )

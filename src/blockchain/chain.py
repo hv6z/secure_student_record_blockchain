@@ -34,8 +34,9 @@ def latest_block(connection: sqlite3.Connection) -> AuditBlock:
             """
             INSERT INTO audit_blocks (
                 block_index, timestamp, previous_hash, record_id,
-                version, operation, envelope_hash, block_hash
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                version, operation, envelope_hash, block_schema_version,
+                actor_id, actor_role, block_hash
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             block.as_database_tuple(),
         )
@@ -51,6 +52,8 @@ def append_block(
     version: int,
     operation: str,
     envelope_hash: str,
+    actor_id: str = "system",
+    actor_role: str = "system",
 ) -> AuditBlock:
     """Nối khối mới; hàm gọi phải đang giữ giao dịch BEGIN IMMEDIATE."""
 
@@ -61,13 +64,16 @@ def append_block(
         version=version,
         operation=operation,
         envelope_hash=envelope_hash,
+        actor_id=actor_id,
+        actor_role=actor_role,
     )
     connection.execute(
         """
         INSERT INTO audit_blocks (
             block_index, timestamp, previous_hash, record_id,
-            version, operation, envelope_hash, block_hash
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            version, operation, envelope_hash, block_schema_version,
+            actor_id, actor_role, block_hash
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         block.as_database_tuple(),
     )
