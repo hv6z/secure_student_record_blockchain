@@ -9,7 +9,8 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
 AES_GCM_ALGORITHM = "AES-256-GCM"
-AES_GCM_SCHEMA_VERSION = 1
+AES_GCM_SCHEMA_VERSION = 2
+SUPPORTED_AES_GCM_SCHEMA_VERSIONS = frozenset({1, AES_GCM_SCHEMA_VERSION})
 AES_GCM_NONCE_SIZE = 12
 AES_GCM_TAG_SIZE = 16
 
@@ -97,7 +98,7 @@ class AesGcmCipher:
         if not isinstance(envelope, EncryptedEnvelope):
             raise TypeError("envelope phải là EncryptedEnvelope.")
         _require_bytes(aad, "aad")
-        if envelope.schema_version != AES_GCM_SCHEMA_VERSION:
+        if envelope.schema_version not in SUPPORTED_AES_GCM_SCHEMA_VERSIONS:
             raise ValueError("Phiên bản gói mã hóa không được hỗ trợ.")
         if envelope.algorithm != AES_GCM_ALGORITHM:
             raise ValueError("Thuật toán trong gói mã hóa không được hỗ trợ.")
