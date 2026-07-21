@@ -26,7 +26,9 @@ def make_aad(
     record_id: int | str,
     version: int,
     operation: str,
-    schema_version: int = 1,
+    schema_version: int = 2,
+    actor_id: str = "system",
+    actor_role: str = "system",
 ) -> bytes:
     """Tạo dữ liệu xác thực bổ sung gắn bản mã với ngữ cảnh.
 
@@ -55,11 +57,18 @@ def make_aad(
     if schema_version < 1:
         raise ValueError("schema_version phải lớn hơn 0.")
 
-    return canonical_json_bytes(
-        {
-            "operation": operation,
-            "record_id": record_id,
-            "schema_version": schema_version,
-            "version": version,
-        }
-    )
+    payload = {
+        "operation": operation,
+        "record_id": record_id,
+        "schema_version": schema_version,
+        "version": version,
+    }
+    if schema_version >= 2:
+        if not isinstance(actor_id, str) or not actor_id.strip():
+            raise ValueError("actor_id không được rỗng với schema_version >= 2.")
+        if not isinstance(actor_role, str) or not actor_role.strip():
+            raise ValueError("actor_role không được rỗng với schema_version >= 2.")
+        payload["actor_id"] = actor_id.strip()
+        payload["actor_role"] = actor_role.strip().casefold()
+
+    return canonical_json_bytes(payload)

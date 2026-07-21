@@ -11,7 +11,8 @@ from .serialization import canonical_json_bytes, make_aad
 from .lookup import calculate_lookup_token, derive_lookup_key
 
 
-ENVELOPE_HASH_DOMAIN = b"secure-student-record/encrypted-envelope-hash/v1"
+ENVELOPE_HASH_DOMAIN_V1 = b"secure-student-record/encrypted-envelope-hash/v1"
+ENVELOPE_HASH_DOMAIN = b"secure-student-record/encrypted-envelope-hash/v2"
 
 
 def calculate_envelope_hash(
@@ -19,6 +20,8 @@ def calculate_envelope_hash(
     version: int,
     operation: str,
     envelope: EncryptedEnvelope,
+    actor_id: str = "system",
+    actor_role: str = "system",
 ) -> str:
     """Băm ngữ cảnh và toàn bộ trường của gói mã hóa bằng SHA-256."""
 
@@ -27,7 +30,14 @@ def calculate_envelope_hash(
 
     # Dùng chung phép kiểm tra ngữ cảnh với AAD để tránh hai quy
     # trình chấp nhận các giá trị khác nhau.
-    make_aad(record_id, version, operation, envelope.schema_version)
+    make_aad(
+        record_id,
+        version,
+        operation,
+        envelope.schema_version,
+        actor_id,
+        actor_role,
+    )
     payload = {
         "envelope": {
             "algorithm": envelope.algorithm,
@@ -40,7 +50,13 @@ def calculate_envelope_hash(
         "record_id": record_id,
         "version": version,
     }
-    digest_input = ENVELOPE_HASH_DOMAIN + b"\x00" + canonical_json_bytes(payload)
+    if envelope.schema_version >= 2:
+        payload["actor_id"] = actor_id.strip()
+        payload["actor_role"] = actor_role.strip().casefold()
+        domain = ENVELOPE_HASH_DOMAIN
+    else:
+        domain = ENVELOPE_HASH_DOMAIN_V1
+    digest_input = domain + b"\x00" + canonical_json_bytes(payload)
     return hashlib.sha256(digest_input).hexdigest()
 
 
