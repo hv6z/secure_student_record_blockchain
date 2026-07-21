@@ -176,6 +176,8 @@ def verify_database(
                 elif (
                     block.operation != version.operation
                     or block.timestamp != version.created_at
+                    or block.actor_id != version.actor_id
+                    or block.actor_role != version.actor_role
                     or not _same_text(
                         block.envelope_hash, version.envelope_hash
                     )
@@ -192,6 +194,8 @@ def verify_database(
                         version.version,
                         version.operation,
                         envelope,
+                        version.actor_id,
+                        version.actor_role,
                     )
                     if not _same_text(
                         version.envelope_hash, expected_envelope_hash
@@ -208,6 +212,8 @@ def verify_database(
                             version.version,
                             version.operation,
                             schema_version=version.schema_version,
+                            actor_id=version.actor_id,
+                            actor_role=version.actor_role,
                         ),
                     )
                     value = json.loads(plaintext.decode("utf-8"))
