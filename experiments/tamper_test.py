@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import argparse
 import csv
+import importlib.metadata
+import json
+import platform
 import sqlite3
 import sys
 import tempfile
@@ -202,6 +205,32 @@ def write_results(rows: list[dict[str, object]], output_dir: Path) -> tuple[Path
     return raw_path, summary_path
 
 
+def write_metadata(output_path: Path, *, trials: int) -> None:
+    """Ghi môi trường và phạm vi thử sửa đổi, không ghi khóa bí mật."""
+    packages: dict[str, str] = {}
+    for package in ("Flask", "cryptography"):
+        try:
+            packages[package] = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            packages[package] = "not-installed"
+    metadata = {
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "platform": platform.platform(),
+        "processor": platform.processor() or "unknown",
+        "python": sys.version,
+        "sqlite": sqlite3.sqlite_version,
+        "packages": packages,
+        "tamper_experiment": {
+            "trials_per_case": trials,
+            "cases": list(MUTATIONS),
+        },
+    }
+    output_path.write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
 def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -223,8 +252,13 @@ def main() -> int:
         key_id=settings.key_id,
     )
     raw_path, summary_path = write_results(rows, args.output_dir)
+    metadata_path = args.output_dir / (
+        raw_path.stem.replace("tamper_raw_", "tamper_metadata_") + ".json"
+    )
+    write_metadata(metadata_path, trials=args.trials)
     print(f"Kết quả thô: {raw_path}")
     print(f"Tỷ lệ phát hiện: {summary_path}")
+    print(f"Môi trường và cấu hình: {metadata_path}")
     return 0
 
 

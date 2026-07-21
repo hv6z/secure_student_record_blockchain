@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import csv
+import importlib.metadata
 import json
+import platform
 import random
 import sqlite3
 import statistics
@@ -303,6 +305,42 @@ def write_summary(rows: list[dict[str, object]], output_path: Path) -> None:
                 )
 
 
+def write_metadata(
+    output_path: Path,
+    *,
+    sizes: list[int],
+    repeats: int,
+    profiles: list[str],
+    seed: int,
+) -> None:
+    """Ghi bối cảnh chạy để số liệu có thể được đối chiếu và tái lập."""
+    packages: dict[str, str] = {}
+    for package in ("Flask", "cryptography"):
+        try:
+            packages[package] = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            packages[package] = "not-installed"
+    metadata = {
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "platform": platform.platform(),
+        "processor": platform.processor() or "unknown",
+        "python": sys.version,
+        "sqlite": sqlite3.sqlite_version,
+        "packages": packages,
+        "experiment": {
+            "sizes": sizes,
+            "repeats": repeats,
+            "profiles": profiles,
+            "seed": seed,
+            "timer": "time.perf_counter_ns",
+        },
+    }
+    output_path.write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
 def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -329,10 +367,19 @@ def main() -> int:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     raw_path = args.output_dir / f"raw_{timestamp}.csv"
     summary_path = args.output_dir / f"summary_{timestamp}.csv"
+    metadata_path = args.output_dir / f"metadata_{timestamp}.json"
     write_raw_results(rows, raw_path)
     write_summary(rows, summary_path)
+    write_metadata(
+        metadata_path,
+        sizes=args.sizes,
+        repeats=args.repeats,
+        profiles=args.profiles,
+        seed=args.seed,
+    )
     print(f"Kết quả thô: {raw_path}")
     print(f"Kết quả thống kê: {summary_path}")
+    print(f"Môi trường và cấu hình: {metadata_path}")
     return 0
 
 
