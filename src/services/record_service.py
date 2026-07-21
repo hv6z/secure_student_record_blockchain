@@ -24,7 +24,11 @@ from src.database.repository import (
 )
 from src.database.schema import initialize_database
 from src.domain.student import normalize_student_code, normalize_student_data
-from src.encryption.aes_cipher import AesGcmCipher, EncryptedEnvelope
+from src.encryption.aes_cipher import (
+    AES_GCM_SCHEMA_VERSION,
+    AesGcmCipher,
+    EncryptedEnvelope,
+)
 from src.encryption.serialization import canonical_json_bytes, make_aad
 from src.integrity import (
     calculate_envelope_hash,
@@ -69,6 +73,17 @@ def _validate_expected_version(expected_version: int | None) -> None:
         raise ValueError("expected_version phải lớn hơn hoặc bằng 1.")
 
 
+def _validate_actor(actor_id: str, actor_role: str) -> tuple[str, str]:
+    if not isinstance(actor_id, str) or not actor_id.strip():
+        raise ValueError("actor_id không được rỗng.")
+    if not isinstance(actor_role, str):
+        raise TypeError("actor_role phải là chuỗi.")
+    normalized_role = actor_role.strip().casefold()
+    if normalized_role not in {"system", "admin", "registrar", "auditor"}:
+        raise ValueError("actor_role không hợp lệ.")
+    return actor_id.strip(), normalized_role
+
+
 class RecordService:
     """Giao diện duy nhất để ứng dụng thao tác với hồ sơ sinh viên."""
 
@@ -105,6 +120,8 @@ class RecordService:
                 version.version,
                 version.operation,
                 schema_version=version.schema_version,
+                actor_id=version.actor_id,
+                actor_role=version.actor_role,
             ),
         )
         value = json.loads(plaintext.decode("utf-8"))
@@ -137,11 +154,25 @@ class RecordService:
         operation: str,
         data: Mapping[str, Any],
         timestamp: str,
+        actor_id: str,
+        actor_role: str,
     ) -> EncryptedEnvelope:
-        aad = make_aad(record_id, version, operation)
+        aad = make_aad(
+            record_id,
+            version,
+            operation,
+            schema_version=AES_GCM_SCHEMA_VERSION,
+            actor_id=actor_id,
+            actor_role=actor_role,
+        )
         envelope = self._cipher.encrypt(canonical_json_bytes(data), aad=aad)
         envelope_hash = calculate_envelope_hash(
-            record_id, version, operation, envelope
+            record_id,
+            version,
+            operation,
+            envelope,
+            actor_id,
+            actor_role,
         )
         insert_version(
             connection,
@@ -154,6 +185,8 @@ class RecordService:
             ciphertext=envelope.ciphertext,
             envelope_hash=envelope_hash,
             operation=operation,
+            actor_id=actor_id,
+            actor_role=actor_role,
             timestamp=timestamp,
         )
         append_block(
@@ -163,10 +196,19 @@ class RecordService:
             version=version,
             operation=operation,
             envelope_hash=envelope_hash,
+            actor_id=actor_id,
+            actor_role=actor_role,
         )
         return envelope
 
-    def create_student(self, data: Mapping[str, Any]) -> dict[str, Any]:
+    def create_student(
+        self,
+        data: Mapping[str, Any],
+        *,
+        actor_id: str = "system",
+        actor_role: str = "system",
+    ) -> dict[str, Any]:
+        actor_id, actor_role = _validate_actor(actor_id, actor_role)
         normalized = normalize_student_data(data)
         lookup_token = calculate_lookup_token(
             normalized["student_code"], self._lookup_key
@@ -192,6 +234,8 @@ class RecordService:
                     operation="CREATE",
                     data=normalized,
                     timestamp=timestamp,
+                    actor_id=actor_id,
+                    actor_role=actor_role,
                 )
         except sqlite3.IntegrityError as exc:
             raise RecordServiceError(
@@ -215,8 +259,12 @@ class RecordService:
         record_id: str,
         data: Mapping[str, Any],
         expected_version: int | None = None,
+        *,
+        actor_id: str = "system",
+        actor_role: str = "system",
     ) -> dict[str, Any]:
         _validate_expected_version(expected_version)
+        actor_id, actor_role = _validate_actor(actor_id, actor_role)
         normalized = normalize_student_data(data)
         lookup_token = calculate_lookup_token(
             normalized["student_code"], self._lookup_key
@@ -240,6 +288,8 @@ class RecordService:
                     operation="UPDATE",
                     data=normalized,
                     timestamp=timestamp,
+                    actor_id=actor_id,
+                    actor_role=actor_role,
                 )
                 update_record_head(
                     connection,
@@ -270,8 +320,12 @@ class RecordService:
         self,
         record_id: str,
         expected_version: int | None = None,
+        *,
+        actor_id: str = "system",
+        actor_role: str = "system",
     ) -> dict[str, Any]:
         _validate_expected_version(expected_version)
+        actor_id, actor_role = _validate_actor(actor_id, actor_role)
         timestamp = _utc_now()
 
         connection = connect_database(self.database_path)
@@ -291,6 +345,8 @@ class RecordService:
                     operation="DELETE",
                     data=snapshot,
                     timestamp=timestamp,
+                    actor_id=actor_id,
+                    actor_role=actor_role,
                 )
                 update_record_head(
                     connection,
