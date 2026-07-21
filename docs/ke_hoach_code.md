@@ -4,37 +4,44 @@
 
 Không chia dự án theo người thực hiện. Mọi chức năng đi qua một lớp điều phối chung là `RecordService`. Nhờ vậy, phần mật mã và phần quản lý dữ liệu luôn được gọi trong cùng một luồng và cùng một giao dịch SQLite.
 
-```text
-routes.py
-   ↓
-record_service.py
-   ├── student.py
-   ├── aes_cipher.py
-   ├── hashing.py
-   ├── repository.py
-   ├── block.py
-   └── verify.py
+```mermaid
+flowchart LR
+    A["web/auth.py + access.py"] --> R["web/routes.py"]
+    A --> U["auth/service.py"]
+    R --> S["services/record_service.py"]
+    S --> D["domain/student.py"]
+    S --> A["encryption/aes_cipher.py"]
+    S --> L["integrity/lookup.py"]
+    S --> H["integrity/hashing.py"]
+    S --> P["database/repository.py"]
+    S --> C["blockchain/chain.py"]
+    S --> V["verification/verifier.py"]
 ```
 
 `routes.py` không được tự mã hóa, tự viết câu lệnh SQLite hoặc tự tính băm. Tệp này chỉ nhận dữ liệu biểu mẫu, gọi dịch vụ và hiển thị kết quả.
+
+Sơ đồ thành phần, transaction, xác minh và lược đồ dữ liệu đầy đủ nằm tại [kiến trúc hệ thống hiện thực](KIEN_TRUC_HE_THONG.md).
 
 ## cụ thể từng phần code gì
 
 | phần | tệp chính | nội dung cần chịu trách nhiệm |
 |---|---|---|
-| cấu hình | `src/config.py` | đọc `.env`, kiểm tra khóa AES đủ 32 byte, xác định đường dẫn SQLite |
+| cấu hình | `src/config.py` | đọc `.env`, kiểm tra khóa AES, đường dẫn SQLite, phiên và lockout |
+| xác thực | `src/auth/service.py` | tài khoản, password hash `scrypt`, khóa tạm, đổi role/mật khẩu/trạng thái |
 | mô hình hồ sơ | `src/domain/student.py` | chuẩn hóa mã sinh viên, họ tên, ngày sinh, chương trình, học phần và điểm |
 | tuần tự hóa | `src/encryption/serialization.py` | chuyển dữ liệu sang JSON chuẩn hóa và tạo dữ liệu xác thực bổ sung |
 | mã hóa | `src/encryption/aes_cipher.py` | AES-GCM, nonce 12 byte, giải mã và phát hiện sai thẻ xác thực |
-| chỉ mục kín | `src/integrity/hashing.py` | dẫn xuất khóa chỉ mục, HMAC mã sinh viên, SHA-256 phong bì mã hóa |
+| chỉ mục kín | `src/integrity/lookup.py` | dẫn xuất khóa tra cứu và tạo HMAC-SHA-256 từ mã sinh viên |
+| băm phong bì | `src/integrity/hashing.py` | tính SHA-256 cho phong bì mã hóa bằng tuần tự hóa ổn định |
 | kết nối dữ liệu | `src/database/connection.py` | mở SQLite, bật khóa ngoại và điều khiển giao dịch |
-| lược đồ | `src/database/schema.py` | tạo `records`, `record_versions`, `audit_blocks` và các ràng buộc |
+| lược đồ | `src/database/schema.py` | tạo `users`, `records`, `record_versions`, `audit_blocks` và migration v1-v3 |
 | truy cập dữ liệu | `src/database/repository.py` | câu lệnh thêm, đọc và cập nhật, không chứa quyết định nghiệp vụ |
 | cấu trúc khối | `src/blockchain/block.py` | dữ liệu một khối và cách tính `block_hash` |
 | chuỗi khối | `src/blockchain/chain.py` | khối đầu tiên, nối khối, kiểm tra chiều cao và liên kết |
-| xác minh | `src/verification/verify.py` | kiểm tra chuỗi, SHA-256 phong bì và xác thực AES-GCM |
+| xác minh | `src/verification/verifier.py` | kiểm tra chuỗi, SHA-256 phong bì, HMAC tra cứu và xác thực AES-GCM |
 | điều phối | `src/services/record_service.py` | thêm, sửa, xóa, đọc, tìm kiếm và xác minh trong một luồng thống nhất |
 | ứng dụng Flask | `src/web/app.py` | tạo ứng dụng, khởi tạo dịch vụ, cấu hình phiên và xử lý lỗi |
+| truy cập web | `src/web/auth.py`, `src/web/access.py` | đăng nhập, đăng xuất, nạp user và kiểm tra RBAC |
 | địa chỉ giao diện | `src/web/routes.py` | nhận biểu mẫu, gọi dịch vụ, chuyển kết quả sang trang HTML |
 | trang hiển thị | `src/web/templates/` | bảng điều khiển, hồ sơ, khối và xác minh |
 | kiểu trình bày | `src/web/static/` | giao diện và thao tác thêm hàng học phần |
@@ -45,16 +52,17 @@ record_service.py
 
 ## luồng thêm hồ sơ
 
-1. `routes.py` nhận các trường từ biểu mẫu.
-2. `student.py` chuẩn hóa và từ chối dữ liệu sai.
-3. Dịch vụ tạo UUID nội bộ và HMAC từ mã sinh viên.
-4. `aes_cipher.py` mã hóa JSON hồ sơ bằng AES-GCM.
-5. `hashing.py` băm đầy đủ mã nội bộ, phiên bản, thao tác, nonce và bản mã.
-6. `repository.py` ghi phiên bản mã hóa.
-7. `chain.py` nối một khối `CREATE` vào đầu chuỗi hiện tại.
-8. Cả bản ghi và khối được xác nhận trong cùng một giao dịch.
+1. `auth.py` xác thực session; `access.py` yêu cầu vai trò `admin` hoặc `registrar`.
+2. `routes.py` nhận các trường từ biểu mẫu và lấy `actor_id`/role hiện tại.
+3. `student.py` chuẩn hóa và từ chối dữ liệu sai.
+4. Dịch vụ tạo UUID nội bộ và HMAC từ mã sinh viên.
+5. `aes_cipher.py` mã hóa JSON bằng AES-GCM; AAD gắn hồ sơ, phiên bản, thao tác và actor.
+6. `hashing.py` băm đầy đủ ngữ cảnh, actor, nonce và bản mã.
+7. `repository.py` ghi phiên bản mã hóa cùng actor.
+8. `chain.py` nối một khối `CREATE` có actor vào đầu chuỗi hiện tại.
+9. Cả bản ghi và khối được xác nhận trong cùng một giao dịch.
 
-Nếu bước 6 hoặc 7 thất bại, toàn bộ thao tác phải được hoàn tác.
+Nếu bước ghi phiên bản hoặc nối khối thất bại, toàn bộ thao tác phải được hoàn tác.
 
 ## luồng cập nhật hồ sơ
 
@@ -126,14 +134,15 @@ Kết quả phải nêu lỗi cụ thể thay vì chỉ trả về đúng hoặc
 
 ## thứ tự nên mở tệp trong Visual Studio Code
 
-1. Đọc `src/domain/student.py` để hiểu dữ liệu hợp lệ.
-2. Đọc `src/encryption/aes_cipher.py` và `src/integrity/hashing.py` để hiểu lớp bảo vệ.
-3. Đọc `src/database/schema.py` để hiểu dữ liệu thực tế được lưu.
-4. Đọc `src/blockchain/block.py` để hiểu cách một khối được băm.
-5. Đọc `src/services/record_service.py` để thấy mọi phần được nối với nhau.
-6. Đọc `src/web/routes.py` để thấy giao diện gọi nghiệp vụ.
-7. Đọc `tests/` để biết mỗi yêu cầu được chứng minh ra sao.
-8. Đọc `experiments/run_experiment.py` trước khi thu số liệu báo cáo.
+1. Đọc `src/auth/service.py` và `src/web/access.py` để hiểu xác thực/RBAC.
+2. Đọc `src/domain/student.py` để hiểu dữ liệu hợp lệ.
+3. Đọc `src/encryption/aes_cipher.py`, `src/integrity/lookup.py` và `src/integrity/hashing.py` để hiểu lớp bảo vệ.
+4. Đọc `src/database/schema.py` để hiểu dữ liệu thực tế được lưu.
+5. Đọc `src/blockchain/block.py` để hiểu cách một khối và actor được băm.
+6. Đọc `src/services/record_service.py` để thấy mọi phần được nối với nhau.
+7. Đọc `src/web/routes.py` để thấy giao diện gọi nghiệp vụ.
+8. Đọc `tests/` để biết mỗi yêu cầu được chứng minh ra sao.
+9. Đọc `experiments/run_experiment.py` trước khi thu số liệu báo cáo.
 
 ## tiêu chí hoàn thành trước khi đo
 
@@ -147,4 +156,8 @@ Kết quả phải nêu lỗi cụ thể thay vì chỉ trả về đúng hoặc
 * sửa hoặc xóa một khối làm xác minh thất bại
 * khởi động lại ứng dụng không làm mất chuỗi
 * toàn bộ kiểm thử tự động thành công
+* người chưa đăng nhập bị chuyển về trang đăng nhập
+* auditor đọc/xác minh được nhưng không tạo, sửa hoặc xóa hồ sơ
+* thao tác web ghi đúng `actor_id`/role và sửa actor làm xác minh thất bại
+* database schema v1 được nâng cấp mà dữ liệu cũ vẫn xác minh được
 
